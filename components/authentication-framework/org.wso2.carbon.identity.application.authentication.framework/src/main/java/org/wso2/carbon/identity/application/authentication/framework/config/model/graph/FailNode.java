@@ -18,15 +18,19 @@
 
 package org.wso2.carbon.identity.application.authentication.framework.config.model.graph;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Authentication fail Node.
  * Contains parameters required to process authentication failure.
  */
-public class FailNode implements AuthGraphNode {
+public class FailNode extends AbstractAuthGraphNode implements AuthGraphNode {
 
     private static final long serialVersionUID = 9217119784147648132L;
     private boolean showErrorPage;
     private String errorPageUri;
+    private Map<String, String> failureData;
 
     public String getErrorPageUri() {
         return errorPageUri;
@@ -48,5 +52,13 @@ public class FailNode implements AuthGraphNode {
     public String getName() {
         //TODO: Implement this
         return null;
+    }
+
+    public Map<String, String> getFailureData() {
+
+        if (failureData == null) {
+            failureData = new HashMap<>();
+        }
+        return failureData;
     }
 }

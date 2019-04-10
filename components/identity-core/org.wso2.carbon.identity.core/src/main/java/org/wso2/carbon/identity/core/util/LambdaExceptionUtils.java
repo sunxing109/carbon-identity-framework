@@ -18,6 +18,7 @@
 package org.wso2.carbon.identity.core.util;
 
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -53,6 +54,33 @@ public final class LambdaExceptionUtils {
     }
 
     /**
+     * Represents a {@code TriConsumer} interface.
+     *
+     * @param <T> the type of the first input to the operation
+     * @param <U> the type of the second input to the operation
+     * @param <V> the type of the third input to the operation
+     */
+    @FunctionalInterface
+    public interface TriConsumer<T, U, V> {
+
+        void accept(T t, U u, V v);
+    }
+
+    /**
+     * Represents a {@code BiConsumer} interface which can throw exceptions.
+     *
+     * @param <T> the type of the first input to the operation
+     * @param <U> the type of the second input to the operation
+     * @param <V> the type of the third input to the operation
+     * @param <E> the type of Exception
+     */
+    @FunctionalInterface
+    public interface TriConsumerWithExceptions<T, U, V, E extends Exception> {
+
+        void accept(T t, U u, V v) throws E;
+    }
+
+    /**
      * Represents a {@code Function} interface which can throw exceptions.
      *
      * @param <T> the type of the input to the function
@@ -63,6 +91,19 @@ public final class LambdaExceptionUtils {
     public interface FunctionWithExceptions<T, R, E extends Exception> {
 
         R apply(T t) throws E;
+    }
+    /**
+     * Represents a {@code BiFunction} interface which can throw exceptions.
+     *
+     * @param <T> the type of the input to the function
+     * @param <U> the type of the input to the function
+     * @param <R> the type of the result of the function
+     * @param <E> the type of Exception
+     */
+    @FunctionalInterface
+    public interface BiFunctionWithExceptions<T, U, R, E extends Exception> {
+
+        R apply(T t, U u) throws E;
     }
 
     /**
@@ -143,6 +184,29 @@ public final class LambdaExceptionUtils {
         return t -> {
             try {
                 return function.apply(t);
+            } catch (Exception exception) {
+                throwAsUnchecked(exception);
+                return null;
+            }
+        };
+    }
+
+    /**
+     * This method allows a BiFunction which throws exceptions to be used in places which expects a BiFunction.
+     *
+     * @param <T>      Any Object.
+     * @param <U>      Any Object.
+     * @param <R>      Any Object.
+     * @param <E>      Any Exception.
+     * @param biFunction BiFunction to apply for given arguments.
+     * @return Any Object that result from the bi-function passed.
+     */
+    public static <T, U, R, E extends Exception> BiFunction<T, U, R> rethrowFunction(
+            BiFunctionWithExceptions<T, U, R, E> biFunction) {
+
+        return (t,u) -> {
+            try {
+                return biFunction.apply(t,u);
             } catch (Exception exception) {
                 throwAsUnchecked(exception);
                 return null;

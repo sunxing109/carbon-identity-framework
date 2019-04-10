@@ -21,7 +21,6 @@ import com.ibm.wsdl.util.xml.DOM2Writer;
 import org.apache.axis2.engine.AxisConfiguration;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.collections.MapUtils;
-import org.apache.commons.io.Charsets;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -54,6 +53,7 @@ import org.wso2.carbon.identity.core.model.IdentityEventListenerConfig;
 import org.wso2.carbon.identity.core.model.IdentityEventListenerConfigKey;
 import org.wso2.carbon.registry.core.utils.UUIDGenerator;
 import org.wso2.carbon.user.api.RealmConfiguration;
+import org.wso2.carbon.user.api.UserRealm;
 import org.wso2.carbon.user.api.UserStoreException;
 import org.wso2.carbon.user.core.UserCoreConstants;
 import org.wso2.carbon.user.core.UserStoreManager;
@@ -78,6 +78,7 @@ import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -90,10 +91,16 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.TransformerConfigurationException;
+import javax.xml.transform.TransformerFactory;
 import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathConstants;
 import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
+
+import static org.wso2.carbon.identity.core.util.IdentityCoreConstants.ALPHABET;
+import static org.wso2.carbon.identity.core.util.IdentityCoreConstants.ENCODED_ZERO;
+import static org.wso2.carbon.identity.core.util.IdentityCoreConstants.INDEXES;
 
 public class IdentityUtil {
 
@@ -125,6 +132,8 @@ public class IdentityUtil {
     private static final int ENTITY_EXPANSION_LIMIT = 0;
     public static final String PEM_BEGIN_CERTFICATE = "-----BEGIN CERTIFICATE-----";
     public static final String PEM_END_CERTIFICATE = "-----END CERTIFICATE-----";
+    private static final String APPLICATION_DOMAIN = "Application";
+    private static final String WORKFLOW_DOMAIN = "Workflow";
 
     // System Property for trust managers.
     public static final String PROP_TRUST_STORE_UPDATE_REQUIRED =
@@ -525,6 +534,25 @@ public class IdentityUtil {
     }
 
     /**
+     * Create TransformerFactory with the XXE and XEE prevention measurements.
+     *
+     * @return TransformerFactory instance
+     */
+    public static TransformerFactory getSecuredTransformerFactory() {
+
+        TransformerFactory trfactory = TransformerFactory.newInstance();
+        try {
+            trfactory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        } catch (TransformerConfigurationException e) {
+            log.error("Failed to load XML Processor Feature " + XMLConstants.FEATURE_SECURE_PROCESSING +
+                    " for secure-processing.");
+        }
+        trfactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        trfactory.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
+        return trfactory;
+    }
+
+    /**
      * Check the case sensitivity of the user store in which the user is in.
      *
      * @param username Full qualified username
@@ -573,12 +601,13 @@ public class IdentityUtil {
             return true;
         }
         try {
-            org.wso2.carbon.user.core.UserStoreManager userStoreManager = (org.wso2.carbon.user.core
-                    .UserStoreManager) IdentityTenantUtil.getRealmService()
-                    .getTenantUserRealm(tenantId).getUserStoreManager();
-            org.wso2.carbon.user.core.UserStoreManager userAvailableUserStoreManager = userStoreManager
-                    .getSecondaryUserStoreManager(userStoreDomain);
-            return isUserStoreCaseSensitive(userAvailableUserStoreManager);
+            UserRealm tenantUserRealm = IdentityTenantUtil.getRealmService().getTenantUserRealm(tenantId);
+            if (tenantUserRealm != null) {
+                org.wso2.carbon.user.core.UserStoreManager userStoreManager = (org.wso2.carbon.user.core.UserStoreManager) tenantUserRealm
+                        .getUserStoreManager();
+                org.wso2.carbon.user.core.UserStoreManager userAvailableUserStoreManager = userStoreManager.getSecondaryUserStoreManager(userStoreDomain);
+                return isUserStoreCaseSensitive(userAvailableUserStoreManager);
+            }
         } catch (UserStoreException e) {
             if (log.isDebugEnabled()) {
                 log.debug("Error while reading user store property CaseInsensitiveUsername. Considering as case " +
@@ -608,6 +637,31 @@ public class IdentityUtil {
                     ".");
         }
         return !Boolean.parseBoolean(caseInsensitiveUsername);
+    }
+
+    /**
+     * This returns whether case sensitive user name can be used as the cache key.
+     *
+     * @param userStoreManager user-store manager
+     * @return true if case sensitive username can be use as cache key
+     */
+    public static boolean isUseCaseSensitiveUsernameForCacheKeys(UserStoreManager userStoreManager) {
+
+        if (userStoreManager == null) {
+            //this is done to handle federated scenarios. For federated scenarios, there is no user store manager for
+            // the user
+            return true;
+        }
+        String useCaseSensitiveUsernameForCacheKeys = userStoreManager.getRealmConfiguration()
+                .getUserStoreProperty(IdentityCoreConstants.USE_CASE_SENSITIVE_USERNAME_FOR_CACHE_KEYS);
+        if (StringUtils.isBlank(useCaseSensitiveUsernameForCacheKeys)) {
+            if (log.isDebugEnabled()) {
+                log.debug("Failed to read user store property UseCaseSensitiveUsernameForCacheKeys. Considering as "
+                        + "case sensitive.");
+            }
+            return true;
+        }
+        return Boolean.parseBoolean(useCaseSensitiveUsernameForCacheKeys);
     }
 
     public static boolean isNotBlank(String input) {
@@ -659,6 +713,17 @@ public class IdentityUtil {
         return Long.parseLong(cleanUpTimeout);
     }
 
+    public static long getTempDataCleanUpTimeout() {
+
+        String cleanUpTimeout = IdentityUtil.getProperty(IdentityConstants.ServerConfig.TEMP_DATA_CLEAN_UP_TIMEOUT);
+        if (StringUtils.isBlank(cleanUpTimeout)) {
+            cleanUpTimeout = IdentityConstants.ServerConfig.TEMP_DATA_CLEAN_UP_TIMEOUT_DEFAULT;
+        } else if (!StringUtils.isNumeric(cleanUpTimeout)) {
+            cleanUpTimeout = IdentityConstants.ServerConfig.TEMP_DATA_CLEAN_UP_TIMEOUT_DEFAULT;
+        }
+        return Long.parseLong(cleanUpTimeout);
+    }
+
     public static long getOperationCleanUpPeriod(String tenantDomain) {
 
         String cleanUpPeriod = IdentityUtil.getProperty(IdentityConstants.ServerConfig.OPERATION_CLEAN_UP_PERIOD);
@@ -674,6 +739,10 @@ public class IdentityUtil {
 
         if (nameWithDomain.indexOf(UserCoreConstants.DOMAIN_SEPARATOR) > 0) {
             String domain = nameWithDomain.substring(0, nameWithDomain.indexOf(UserCoreConstants.DOMAIN_SEPARATOR));
+            if (UserCoreConstants.INTERNAL_DOMAIN.equalsIgnoreCase(domain) || WORKFLOW_DOMAIN.equalsIgnoreCase(domain)
+                    || APPLICATION_DOMAIN.equalsIgnoreCase(domain)) {
+                return domain.substring(0, 1).toUpperCase() + domain.substring(1).toLowerCase();
+            }
             return domain.toUpperCase();
         } else {
             return getPrimaryDomainName();
@@ -688,11 +757,13 @@ public class IdentityUtil {
      * @return application name with domain name
      */
     public static String addDomainToName(String name, String domainName) {
+
         if (domainName != null && name != null && !name.contains(UserCoreConstants.DOMAIN_SEPARATOR)) {
             if (!UserCoreConstants.PRIMARY_DEFAULT_DOMAIN_NAME.equalsIgnoreCase(domainName)) {
                 if (UserCoreConstants.INTERNAL_DOMAIN.equalsIgnoreCase(domainName) ||
-                        "Workflow".equalsIgnoreCase(domainName) || "Application".equalsIgnoreCase(domainName)) {
-                    name = domainName + UserCoreConstants.DOMAIN_SEPARATOR + name;
+                        WORKFLOW_DOMAIN.equalsIgnoreCase(domainName) || APPLICATION_DOMAIN.equalsIgnoreCase(domainName)) {
+                    name = domainName.substring(0, 1).toUpperCase() + domainName.substring(1).toLowerCase() +
+                            UserCoreConstants.DOMAIN_SEPARATOR + name;
                 } else {
                     name = domainName.toUpperCase() + UserCoreConstants.DOMAIN_SEPARATOR + name;
                 }
@@ -1001,6 +1072,23 @@ public class IdentityUtil {
     }
 
     /**
+     * Get the server config for enabling federated user association
+     *
+     * @return isFederatedUserAssociationEnabled value
+     */
+    public static boolean isFederatedUserAssociationEnabled() {
+
+        String enableFedUserAssocicationConfigValue = IdentityUtil.getProperty(
+                IdentityConstants.ServerConfig.ENABLE_FEDERATED_USER_ASSOCIATION);
+        if (StringUtils.isBlank(enableFedUserAssocicationConfigValue)) {
+            enableFedUserAssocicationConfigValue =
+                    IdentityConstants.ServerConfig.ENABLE_FEDERATED_USER_ASSOCIATION_DEFAULT;
+        }
+
+        return Boolean.parseBoolean(enableFedUserAssocicationConfigValue);
+    }
+
+    /**
      * Returns whether the passed operation is supported by userstore or not
      *
      * @param userStoreManager User Store
@@ -1105,5 +1193,110 @@ public class IdentityUtil {
         } catch (CertificateException e) {
             return false;
         }
+    }
+
+    /**
+     * Encodes the given bytes as a base58 string (no checksum is appended).
+     *
+     * @param input the bytes to encode
+     * @return the base58-encoded string
+     */
+    public static String base58Encode(byte[] input) {
+
+        if (input.length == 0) {
+            return "";
+        }
+        // Count leading zeros.
+        int zeros = 0;
+        while (zeros < input.length && input[zeros] == 0) {
+            ++zeros;
+        }
+        // Convert base-256 digits to base-58 digits (plus conversion to ASCII characters)
+        input = Arrays.copyOf(input, input.length); // since we modify it in-place
+        char[] encoded = new char[input.length * 2]; // upper bound
+        int outputStart = encoded.length;
+        for (int inputStart = zeros; inputStart < input.length; ) {
+            encoded[--outputStart] = ALPHABET[divmod(input, inputStart, 256, 58)];
+            if (input[inputStart] == 0) {
+                ++inputStart; // optimization - skip leading zeros
+            }
+        }
+        // Preserve exactly as many leading encoded zeros in output as there were leading zeros in input.
+        while (outputStart < encoded.length && encoded[outputStart] == ENCODED_ZERO) {
+            ++outputStart;
+        }
+        while (--zeros >= 0) {
+            encoded[--outputStart] = ENCODED_ZERO;
+        }
+        // Return encoded string (including encoded leading zeros).
+        return new String(encoded, outputStart, encoded.length - outputStart);
+    }
+
+    /**
+     * Decodes the given base58 string into the original data bytes.
+     *
+     * @param input the base58-encoded string to decode
+     * @return the decoded data bytes
+     * @throws RuntimeException if the given string is not a valid base58 string
+     */
+    public static byte[] base58Decode(String input) throws RuntimeException {
+
+        if (input.length() == 0) {
+            return new byte[0];
+        }
+        // Convert the base58-encoded ASCII chars to a base58 byte sequence (base58 digits).
+        byte[] input58 = new byte[input.length()];
+        for (int i = 0; i < input.length(); ++i) {
+            char c = input.charAt(i);
+            int digit = c < 128 ? INDEXES[c] : -1;
+            if (digit < 0) {
+                throw new RuntimeException(String.format("Invalid character %s at %s", c, i));
+            }
+            input58[i] = (byte) digit;
+        }
+        // Count leading zeros.
+        int zeros = 0;
+        while (zeros < input58.length && input58[zeros] == 0) {
+            ++zeros;
+        }
+        // Convert base-58 digits to base-256 digits.
+        byte[] decoded = new byte[input.length()];
+        int outputStart = decoded.length;
+        for (int inputStart = zeros; inputStart < input58.length; ) {
+            decoded[--outputStart] = divmod(input58, inputStart, 58, 256);
+            if (input58[inputStart] == 0) {
+                ++inputStart; // optimization - skip leading zeros
+            }
+        }
+        // Ignore extra leading zeroes that were added during the calculation.
+        while (outputStart < decoded.length && decoded[outputStart] == 0) {
+            ++outputStart;
+        }
+        // Return decoded data (including original number of leading zeros).
+        return Arrays.copyOfRange(decoded, outputStart - zeros, decoded.length);
+    }
+
+    /**
+     * Divides a number, represented as an array of bytes each containing a single digit
+     * in the specified base, by the given divisor. The given number is modified in-place
+     * to contain the quotient, and the return value is the remainder.
+     *
+     * @param number     the number to divide
+     * @param firstDigit the index within the array of the first non-zero digit
+     *                   (this is used for optimization by skipping the leading zeros)
+     * @param base       the base in which the number's digits are represented (up to 256)
+     * @param divisor    the number to divide by (up to 256)
+     * @return the remainder of the division operation
+     */
+    private static byte divmod(byte[] number, int firstDigit, int base, int divisor) {
+        // this is just long division which accounts for the base of the input digits
+        int remainder = 0;
+        for (int i = firstDigit; i < number.length; i++) {
+            int digit = (int) number[i] & 0xFF;
+            int temp = remainder * base + digit;
+            number[i] = (byte) (temp / divisor);
+            remainder = temp % divisor;
+        }
+        return (byte) remainder;
     }
 }

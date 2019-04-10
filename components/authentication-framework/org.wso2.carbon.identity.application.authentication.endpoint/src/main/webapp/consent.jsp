@@ -19,6 +19,7 @@
 <%@ page import="org.owasp.encoder.Encode" %>
 <%@ page import="org.wso2.carbon.identity.application.authentication.endpoint.util.Constants" %>
 <%@include file="localize.jsp" %>
+<%@include file="init-url.jsp" %>
 
 <%
     String[] requestedClaimList = new String[0];
@@ -35,6 +36,7 @@
 
 <html>
 <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%=AuthenticationEndpointUtil.i18n(resourceBundle, "wso2.identity.server")%>
@@ -77,7 +79,7 @@
     <div class="container-fluid">
         <div class="pull-left brand float-remove-xs text-center-xs">
             <a href="#">
-                <img src="images/logo-inverse.svg" alt="wso2" title="wso2" class="logo">
+                <img src="images/logo-inverse.svg" alt="<%=AuthenticationEndpointUtil.i18n(resourceBundle, "business.name")%>" title="<%=AuthenticationEndpointUtil.i18n(resourceBundle, "business.name")%>" class="logo">
                 <h1><em><%=AuthenticationEndpointUtil.i18n(resourceBundle, "identity.server")%>
                 </em></h1>
             </a>
@@ -102,7 +104,7 @@
                 <div class="boarder-all ">
                     <div class="clearfix"></div>
                     <div class="padding-double login-form">
-                        <form action="../commonauth" method="post" id="profile" name=""
+                        <form action="<%=commonauthURL%>" method="post" id="profile" name=""
                               class="form-horizontal">
 
                             <div class="col-xs-12 col-sm-12 col-md-12 col-lg-12">
@@ -233,7 +235,7 @@
     <div class="container-fluid">
         <p><%=AuthenticationEndpointUtil.i18n(resourceBundle, "wso2.identity.server")%> | &copy;
             <script>document.write(new Date().getFullYear());</script>
-            <a href="http://wso2.com/" target="_blank"><i class="icon fw fw-wso2"></i>
+            <a href="<%=AuthenticationEndpointUtil.i18n(resourceBundle, "business.homepage")%>" target="_blank"><i class="icon fw fw-wso2"></i>
                 <%=AuthenticationEndpointUtil.i18n(resourceBundle, "inc")%>
             </a>. <%=AuthenticationEndpointUtil.i18n(resourceBundle, "all.rights.reserved")%>
         </p>

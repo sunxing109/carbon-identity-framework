@@ -66,11 +66,14 @@ public class GraphBasedSequenceHandlerAbstractTest extends AbstractFrameworkTest
         graphBuilderFactory = new JsGraphBuilderFactory();
 
         JsFunctionRegistryImpl jsFunctionRegistry = new JsFunctionRegistryImpl();
-        graphBuilderFactory.setJsFunctionRegistry(jsFunctionRegistry);
+        FrameworkServiceDataHolder.getInstance().setJsFunctionRegistry(jsFunctionRegistry);
 
         graphBuilderFactory.init();
-        configurationLoader.setJsGraphBuilderFactory(graphBuilderFactory);
         FrameworkServiceDataHolder.getInstance().setJsGraphBuilderFactory(graphBuilderFactory);
+
+        AsyncSequenceExecutor asyncSequenceExecutor = new AsyncSequenceExecutor();
+        asyncSequenceExecutor.init();
+        FrameworkServiceDataHolder.getInstance().setAsyncSequenceExecutor(asyncSequenceExecutor);
     }
 
     @BeforeMethod
@@ -119,10 +122,10 @@ public class GraphBasedSequenceHandlerAbstractTest extends AbstractFrameworkTest
 
             AuthenticatedUser result = AuthenticatedUser.createLocalAuthenticatedUserFromSubjectIdentifier("test_user");
             result.getUserAttributes().put(ClaimMapping
-                            .build("http://wso2.org/claims/givenname", "thttp://wso2.org/claims/givenname", "Test", false),
+                            .build("http://wso2.org/claims/givenname", "http://wso2.org/claims/givenname", "Test", false),
                     "Test");
             result.getUserAttributes().put(ClaimMapping
-                            .build("http://wso2.org/claims/lastname", "thttp://wso2.org/claims/lastname", "Test", false),
+                            .build("http://wso2.org/claims/lastname", "http://wso2.org/claims/lastname", "Test", false),
                     "User");
             return result;
         }
